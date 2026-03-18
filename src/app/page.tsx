@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import JSON5 from 'json5';
 import yaml from 'js-yaml';
 
-type Tool = 'format' | 'validate' | 'compress' | 'escape' | 'unescape' | 'to-xml' | 'to-yaml' | 'to-csv' | 'base64-encode' | 'base64-decode' | 'url-encode' | 'url-decode';
+type Tool = 'format' | 'validate' | 'to-xml' | 'to-yaml' | 'to-csv' | 'base64-encode' | 'base64-decode' | 'url-encode' | 'url-decode';
 
 interface ToolInfo {
   id: Tool;
@@ -14,11 +14,8 @@ interface ToolInfo {
 }
 
 const tools: ToolInfo[] = [
-  { id: 'format', name: 'JSON格式化', icon: '🎨', description: '格式化美化JSON' },
+  { id: 'format', name: 'JSON处理', icon: '🎨', description: '格式化、压缩、转义、反转义' },
   { id: 'validate', name: 'JSON校验', icon: '✓', description: '校验JSON语法' },
-  { id: 'compress', name: 'JSON压缩', icon: '📦', description: '压缩JSON文件' },
-  { id: 'escape', name: 'JSON转义', icon: '↗', description: '转义JSON字符串' },
-  { id: 'unescape', name: 'JSON反转义', icon: '↙', description: '反转义JSON字符串' },
   { id: 'to-xml', name: 'JSON转XML', icon: '📄', description: '转换为XML格式' },
   { id: 'to-yaml', name: 'JSON转YAML', icon: '📋', description: '转换为YAML格式' },
   { id: 'to-csv', name: 'JSON转CSV', icon: '📊', description: '转换为CSV格式' },
@@ -72,7 +69,6 @@ function JsonNode({
   const itemCount = isObject ? (isArray ? value.length : Object.keys(value).length) : 0;
   const toggleText = collapsed ? `▶ (${itemCount})` : '▼';
   
-  // 默认折叠超过3层
   const shouldDefaultCollapse = depth >= 3;
   const nameStr = name !== undefined ? String(name) : undefined;
   
@@ -124,6 +120,14 @@ function JsonNode({
   );
 }
 
+// JSON处理结果的各个面板
+interface JsonFormatResults {
+  formatted: string;
+  compressed: string;
+  escaped: string;
+  unescaped: string;
+}
+
 export default function Home() {
   const [activeTool, setActiveTool] = useState<Tool>('format');
   const [input, setInput] = useState('');
@@ -132,6 +136,8 @@ export default function Home() {
   const [notification, setNotification] = useState('');
   const [viewMode, setViewMode] = useState<'tree' | 'text'>('tree');
   const [parsedOutput, setParsedOutput] = useState<any>(null);
+  const [formatResults, setFormatResults] = useState<JsonFormatResults | null>(null);
+  const [activeFormatTab, setActiveFormatTab] = useState<keyof JsonFormatResults>('formatted');
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -150,18 +156,6 @@ export default function Home() {
         case 'validate': {
           JSON5.parse(text);
           return '✓ JSON格式正确，无语法错误';
-        }
-        case 'compress': {
-          const parsed = JSON5.parse(text);
-          return JSON.stringify(parsed);
-        }
-        case 'escape': {
-          const parsed = JSON5.parse(text);
-          return JSON.stringify(JSON.stringify(parsed));
-        }
-        case 'unescape': {
-          const parsed = JSON5.parse(text);
-          return JSON.parse(parsed);
         }
         case 'to-xml': {
           const parsed = JSON5.parse(text);
@@ -222,18 +216,53 @@ export default function Home() {
     if (!input.trim()) {
       setOutput('');
       setParsedOutput(null);
+      setFormatResults(null);
       setError('');
       return;
     }
     setError('');
+    
     try {
+      // JSON处理面板 - 同时计算所有格式
+      if (activeTool === 'format') {
+        try {
+          const parsed = JSON5.parse(input);
+          const formatted = JSON.stringify(parsed, null, 2);
+          const compressed = JSON.stringify(parsed);
+          const escaped = JSON.stringify(JSON.stringify(parsed));
+          const unescaped = JSON.parse(parsed);
+          
+          setFormatResults({
+            formatted,
+            compressed,
+            escaped,
+            unescaped: typeof unescaped === 'string' ? unescaped : JSON.stringify(unescaped)
+          });
+          setOutput(formatted);
+          
+          try {
+            const parsedResult = JSON5.parse(formatted);
+            setParsedOutput(parsedResult);
+          } catch {
+            setParsedOutput(null);
+          }
+        } catch (e: any) {
+          setFormatResults(null);
+          setOutput('');
+          setParsedOutput(null);
+          setError(e.message);
+        }
+        return;
+      }
+      
       const result = processJson(activeTool, input);
       setOutput(result);
+      setFormatResults(null);
       
       // 尝试解析为 JSON 对象用于树形视图
-      if (activeTool === 'format' || activeTool === 'compress') {
+      if (activeTool === 'validate') {
         try {
-          const parsed = JSON5.parse(result);
+          const parsed = JSON5.parse(input);
           setParsedOutput(parsed);
         } catch {
           setParsedOutput(null);
@@ -245,6 +274,7 @@ export default function Home() {
       setError(e.message);
       setOutput('');
       setParsedOutput(null);
+      setFormatResults(null);
     }
   }, [activeTool, input, processJson]);
 
@@ -255,6 +285,19 @@ export default function Home() {
     }, 300);
     return () => clearTimeout(timer);
   }, [input, activeTool, handleProcess]);
+
+  // 切换format tab时更新output
+  useEffect(() => {
+    if (formatResults && activeTool === 'format') {
+      setOutput(formatResults[activeFormatTab]);
+      try {
+        const parsed = JSON5.parse(formatResults[activeFormatTab]);
+        setParsedOutput(parsed);
+      } catch {
+        setParsedOutput(null);
+      }
+    }
+  }, [activeFormatTab, formatResults]);
 
   const handleCopy = () => {
     if (output) {
@@ -268,6 +311,7 @@ export default function Home() {
     setOutput('');
     setError('');
     setParsedOutput(null);
+    setFormatResults(null);
   };
 
   const handleSample = () => {
@@ -287,6 +331,13 @@ export default function Home() {
   };
 
   const currentTool = tools.find(t => t.id === activeTool);
+
+  const formatTabs: { key: keyof JsonFormatResults; label: string; icon: string }[] = [
+    { key: 'formatted', label: '格式化', icon: '🎨' },
+    { key: 'compressed', label: '压缩', icon: '📦' },
+    { key: 'escaped', label: '转义', icon: '↗' },
+    { key: 'unescaped', label: '反转义', icon: '↙' },
+  ];
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
@@ -320,6 +371,7 @@ export default function Home() {
                   onClick={() => {
                     setActiveTool(tool.id);
                     setError('');
+                    setActiveFormatTab('formatted');
                   }}
                 >
                   <span className="text-base">{tool.icon}</span>
@@ -345,23 +397,6 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* 视图切换 */}
-                  {parsedOutput && (activeTool === 'format' || activeTool === 'compress') && (
-                    <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
-                      <button
-                        onClick={() => setViewMode('tree')}
-                        className={`px-3 py-1 text-xs rounded-md transition-colors ${viewMode === 'tree' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}
-                      >
-                        🌳 树形
-                      </button>
-                      <button
-                        onClick={() => setViewMode('text')}
-                        className={`px-3 py-1 text-xs rounded-md transition-colors ${viewMode === 'text' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}
-                      >
-                        📝 文本
-                      </button>
-                    </div>
-                  )}
                   <button
                     onClick={handleCopy}
                     disabled={!output}
@@ -385,6 +420,25 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Format Tabs - 只在format工具时显示 */}
+            {activeTool === 'format' && formatResults && (
+              <div className="px-4 py-2 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 flex gap-2 flex-shrink-0">
+                {formatTabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveFormatTab(tab.key)}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                      activeFormatTab === tab.key 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-500'
+                    }`}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Editor */}
             <div className="flex-1 flex gap-4 p-4 min-h-0">
               {/* Input */}
@@ -402,11 +456,30 @@ export default function Home() {
 
               {/* Output */}
               <div className="flex-1 flex flex-col min-w-0">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 flex-shrink-0">
-                  输出
-                </label>
+                <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    输出
+                  </label>
+                  {/* 视图切换 - 仅格式化工具且是有效JSON时显示 */}
+                  {parsedOutput && activeTool === 'format' && (
+                    <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                      <button
+                        onClick={() => setViewMode('tree')}
+                        className={`px-2 py-0.5 text-xs rounded-md transition-colors ${viewMode === 'tree' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                      >
+                        🌳 树形
+                      </button>
+                      <button
+                        onClick={() => setViewMode('text')}
+                        className={`px-2 py-0.5 text-xs rounded-md transition-colors ${viewMode === 'text' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                      >
+                        📝 文本
+                      </button>
+                    </div>
+                  )}
+                </div>
                 
-                {viewMode === 'tree' && parsedOutput ? (
+                {viewMode === 'tree' && parsedOutput && activeTool === 'format' ? (
                   <div className="flex-1 overflow-auto rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 p-4">
                     <JsonNode value={parsedOutput} defaultCollapsed={false} />
                   </div>
