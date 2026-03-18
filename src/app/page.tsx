@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import JSON5 from 'json5';
 import yaml from 'js-yaml';
 
@@ -119,17 +119,30 @@ export default function Home() {
     }
   }, []);
 
-  const handleProcess = () => {
+  // 自动处理输入
+  const handleProcess = useCallback(() => {
+    if (!input.trim()) {
+      setOutput('');
+      setError('');
+      return;
+    }
     setError('');
     try {
       const result = processJson(activeTool, input);
       setOutput(result);
-      showNotification('处理成功！');
     } catch (e: any) {
       setError(e.message);
       setOutput('');
     }
-  };
+  }, [activeTool, input, processJson]);
+
+  // 监听输入变化自动执行
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleProcess();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [input, activeTool, handleProcess]);
 
   const handleCopy = () => {
     if (output) {
@@ -218,12 +231,6 @@ export default function Home() {
 
             {/* Action Buttons */}
             <div className="px-6 py-3 bg-slate-50 dark:bg-slate-700/50 flex flex-wrap gap-2">
-              <button
-                onClick={handleProcess}
-                className="tool-btn tool-btn-primary"
-              >
-                ▶ 执行
-              </button>
               <button
                 onClick={handleCopy}
                 disabled={!output}
