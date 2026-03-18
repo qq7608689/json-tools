@@ -35,7 +35,7 @@ function JsonNode({
   depth = 0,
   defaultCollapsed = false 
 }: { 
-  name?: string; 
+  name?: string | number; 
   value: any; 
   depth?: number;
   defaultCollapsed?: boolean;
@@ -74,11 +74,12 @@ function JsonNode({
   
   // 默认折叠超过3层
   const shouldDefaultCollapse = depth >= 3;
+  const nameStr = name !== undefined ? String(name) : undefined;
   
   if (!isObject || isEmpty) {
     return (
       <div className="json-line" style={{ paddingLeft: `${depth * 20}px` }}>
-        {name !== undefined && <span className="json-key">"{name}": </span>}
+        {nameStr !== undefined && <span className="json-key">"{nameStr}": </span>}
         <span className={getValueColor()}>{getValueDisplay()}</span>
       </div>
     );
@@ -91,7 +92,7 @@ function JsonNode({
         style={{ paddingLeft: `${depth * 20}px` }}
         onClick={() => setCollapsed(!collapsed)}
       >
-        {name !== undefined && <span className="json-key">"{name}": </span>}
+        {nameStr !== undefined && <span className="json-key">"{nameStr}": </span>}
         <span className="json-bracket">{isArray ? '[' : '{'}</span>
         {!collapsed && (
           <span className="json-toggle text-slate-400 cursor-pointer ml-1" onClick={(e) => { e.stopPropagation(); setCollapsed(true); }}>
